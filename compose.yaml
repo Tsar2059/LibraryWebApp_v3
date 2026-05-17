@@ -1,0 +1,7 @@
+﻿services:
+  librarywebapp:
+    image: librarywebapp
+    build:
+      context: .
+      dockerfile: Dockerfile
+
