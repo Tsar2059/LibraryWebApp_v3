@@ -1,0 +1,147 @@
+@page "/authors/add"
+@using LibraryWebApp.Services
+@using LibraryWebApp.Models
+@using LibraryWebApp.Data
+@using Microsoft.EntityFrameworkCore
+@inject AuthService AuthService
+@inject IDbContextFactory<LibraryDbContext> DbFactory
+@inject NavigationManager Navigation
+
+@if (!AuthService.IsAuthenticated)
+{
+    Navigation.NavigateTo("/login");
+}
+else
+{
+    <h3 class="text-primary mb-4">Добавление нового автора</h3>
+
+    @if (showSuccess)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            ✅ @successMessage
+            <button type="button" class="btn-close" @onclick="() => showSuccess = false"></button>
+        </div>
+    }
+
+    @if (showError)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            ❌ @errorMessage
+            <button type="button" class="btn-close" @onclick="() => showError = false"></button>
+        </div>
+    }
+
+    <EditForm Model="newAuthor" OnValidSubmit="HandleSubmit">
+        <div class="card p-4 mb-3 shadow-sm">
+            <div class="mb-3">
+                <label class="form-label fw-bold">Имя автора</label>
+                <InputText @bind-Value="newAuthor.Name" class="form-control" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label fw-bold">Биография</label>
+                <InputTextArea @bind-Value="newAuthor.Biography" class="form-control" rows="6" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label fw-bold">Фото автора</label>
+                <InputFile OnChange="OnFileSelected" class="form-control" />
+                @if (!string.IsNullOrEmpty(fileError))
+                {
+                    <div class="text-danger mt-1">@fileError</div>
+                }
+                @if (selectedFileName != null)
+                {
+                    <div class="text-success mt-1">📁 Выбран файл: @selectedFileName</div>
+                }
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary px-4">💾 Сохранить</button>
+        <a href="/books/add" class="btn btn-secondary ms-2">← Назад</a>
+    </EditForm>
+}
+
+@code {
+    private Author newAuthor = new();
+    private IBrowserFile? selectedFile;
+    private string? selectedFileName;
+    private string? fileError;
+    private bool showSuccess = false;
+    private bool showError = false;
+    private string successMessage = "";
+    private string errorMessage = "";
+
+    private void OnFileSelected(InputFileChangeEventArgs e)
+    {
+        selectedFile = e.File;
+        selectedFileName = selectedFile?.Name;
+        fileError = null;
+
+        if (selectedFile != null)
+        {
+            var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif" };
+            var extension = Path.GetExtension(selectedFile.Name).ToLower();
+            if (!allowedExtensions.Contains(extension))
+            {
+                fileError = "Разрешены только файлы форматов JPG, PNG, GIF";
+                selectedFile = null;
+                selectedFileName = null;
+            }
+            else if (selectedFile.Size > 5 * 1024 * 1024)
+            {
+                fileError = "Размер файла не должен превышать 5 МБ";
+                selectedFile = null;
+                selectedFileName = null;
+            }
+        }
+    }
+
+    private async Task HandleSubmit()
+    {
+        showSuccess = false;
+        showError = false;
+
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            
+            if (selectedFile != null)
+            {
+                var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "authors");
+                if (!Directory.Exists(uploadsFolder))
+                    Directory.CreateDirectory(uploadsFolder);
+
+                var uniqueFileName = $"{Guid.NewGuid()}_{Path.GetFileName(selectedFile.Name)}";
+                var filePath = Path.Combine(uploadsFolder, uniqueFileName);
+
+                using (var stream = new FileStream(filePath, FileMode.Create))
+                {
+                    await selectedFile.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024).CopyToAsync(stream);
+                }
+
+                newAuthor.PhotoPath = $"/authors/{uniqueFileName}";
+            }
+            
+            context.Authors.Add(newAuthor);
+            await context.SaveChangesAsync();
+            
+            successMessage = $"✅ Автор \"{newAuthor.Name}\" успешно добавлен!";
+            showSuccess = true;
+            
+            newAuthor = new Author();
+            selectedFile = null;
+            selectedFileName = null;
+            
+            StateHasChanged();
+            
+            await Task.Delay(2000);
+            Navigation.NavigateTo("/books/add");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"❌ Ошибка при сохранении: {ex.Message}";
+            showError = true;
+        }
+    }
+}

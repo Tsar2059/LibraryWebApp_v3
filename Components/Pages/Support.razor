@@ -1,0 +1,87 @@
+@page "/support"
+
+<div class="container mt-4">
+    <div class="card shadow-sm border-0">
+        <div class="card-header bg-primary text-white text-center">
+            <h4 class="mb-0">📧 Служба поддержки библиотеки</h4>
+        </div>
+        <div class="card-body">
+            <p class="text-center">Уважаемые читатели! Если у вас есть вопросы, предложения или жалобы, напишите нам. Мы ценим ваше мнение и обязательно ответим.</p>
+
+            <div class="alert alert-info text-center mt-3">
+                <h5>📩 <strong>library.support@example.com</strong></h5>
+                <p class="mb-0">✉️ Напишите нам на эту почту — ответ придет в течение 24 часов</p>
+            </div>
+
+            <hr />
+
+            <div class="row mt-4">
+                <div class="col-md-6">
+                    <div class="card h-100 border-0 shadow-sm">
+                        <div class="card-body text-center">
+                            <div class="display-4">📝</div>
+                            <h5>Предложения по книгам</h5>
+                            <p class="text-muted">Хотите видеть в библиотеке конкретную книгу? Напишите нам!</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card h-100 border-0 shadow-sm">
+                        <div class="card-body text-center">
+                            <div class="display-4">🐛</div>
+                            <h5>Сообщить об ошибке</h5>
+                            <p class="text-muted">Нашли неработающую ссылку или ошибку на сайте? Сообщите!</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row mt-3">
+                <div class="col-md-6">
+                    <div class="card h-100 border-0 shadow-sm">
+                        <div class="card-body text-center">
+                            <div class="display-4">❓</div>
+                            <h5>Вопросы по работе</h5>
+                            <p class="text-muted">Не можете найти книгу или скачать файл? Напишите!</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card h-100 border-0 shadow-sm">
+                        <div class="card-body text-center">
+                            <div class="display-4">⚖️</div>
+                            <h5>Жалобы и замечания</h5>
+                            <p class="text-muted">Что-то пошло не так? Мы разберёмся!</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="alert alert-warning text-center mt-4">
+                <strong>📌 Важно:</strong> Укажите в письме ваше имя и контактный email, чтобы мы могли связаться с вами!
+            </div>
+
+            <div class="text-center mt-3">
+                <a href="mailto:library.support@example.com" class="btn btn-primary btn-lg">
+                    📧 Написать в поддержку
+                </a>
+                <a href="/" class="btn btn-secondary btn-lg ms-2">
+                    🏠 На главную
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .card {
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 20px rgba(0,0,0,0.1) !important;
+    }
+    .display-4 {
+        font-size: 2.5rem;
+    }
+</style>

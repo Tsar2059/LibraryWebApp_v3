@@ -1,0 +1,113 @@
+@page "/books"
+@using LibraryWebApp.Models
+@using LibraryWebApp.Data
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<LibraryDbContext> DbFactory
+
+<h3 class="text-primary mb-4">📚 Каталог книг</h3>
+
+<div class="mb-3">
+    <input type="text" @bind="searchTerm" @bind:event="oninput" class="form-control" 
+           placeholder="🔍 Поиск по названию или автору..." />
+</div>
+
+<div class="row">
+    @foreach (var book in filteredBooks)
+    {
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100 shadow-sm border-0">
+                <div class="card-body">
+                    <h5 class="card-title text-primary">📘 @book.Title</h5>
+                    <h6 class="card-subtitle mb-2 text-muted">
+                        @if (book.BookAuthors != null && book.BookAuthors.Any())
+                        {
+                            <span>✍️ </span>
+                            @for (int i = 0; i < book.BookAuthors.Count; i++)
+                            {
+                                var ba = book.BookAuthors.ElementAt(i);
+                                if (ba.Author != null)
+                                {
+                                    <a href="/authors/@ba.Author.Id">@ba.Author.Name</a>
+                                    if (i < book.BookAuthors.Count - 1)
+                                    {
+                                        <span>, </span>
+                                    }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            <span>✍️ Автор не указан</span>
+                        }
+                    </h6>
+                    <p class="card-text small">
+                        <span class="badge bg-secondary">@book.Category?.Name</span>
+                        <span class="badge bg-info">📅 @book.Year г.</span>
+                        <span class="badge bg-success">📊 @book.AvailableCopies / @book.TotalCopies экз.</span>
+                    </p>
+                    <p class="card-text">@(book.Description?.Length > 100 ? book.Description.Substring(0, 100) + "..." : book.Description)</p>
+                </div>
+                <div class="card-footer bg-transparent border-0 pb-3">
+                    @if (!string.IsNullOrEmpty(book.FilePath))
+                    {
+                        <a href="/books/read/@book.Id" class="btn btn-primary btn-sm me-2" target="_blank">📖 Читать</a>
+                        <a href="/books/download/@book.Id" class="btn btn-success btn-sm">⬇ Скачать</a>
+                    }
+                    else
+                    {
+                        <span class="text-muted">📭 Файл отсутствует</span>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@if (!filteredBooks.Any())
+{
+    <div class="alert alert-info text-center">
+        📭 Книги не найдены. Попробуйте изменить поисковый запрос.
+    </div>
+}
+
+<style>
+    .card {
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 20px rgba(0,0,0,0.1) !important;
+    }
+    .btn {
+        border-radius: 20px;
+    }
+    a {
+        text-decoration: none;
+    }
+    a:hover {
+        text-decoration: underline;
+    }
+</style>
+
+@code {
+    private List<Book> books = new();
+    private string searchTerm = string.Empty;
+
+    private List<Book> filteredBooks => string.IsNullOrWhiteSpace(searchTerm)
+        ? books
+        : books.Where(b => 
+            b.Title.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
+            b.BookAuthors.Any(ba => ba.Author != null && ba.Author.Name.Contains(searchTerm, StringComparison.OrdinalIgnoreCase))
+        ).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        books = await context.Books
+            .Include(b => b.BookAuthors)
+            .ThenInclude(ba => ba.Author)
+            .Include(b => b.Category)
+            .OrderByDescending(b => b.Id)
+            .ToListAsync();
+    }
+}

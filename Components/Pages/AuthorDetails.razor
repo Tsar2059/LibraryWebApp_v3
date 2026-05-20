@@ -1,0 +1,110 @@
+@page "/authors/{id:int}"
+@using LibraryWebApp.Models
+@using LibraryWebApp.Data
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<LibraryDbContext> DbFactory
+@inject NavigationManager Navigation
+
+<h3 class="text-primary mb-4">📖 Информация об авторе</h3>
+
+@if (author != null)
+{
+    <div class="card p-4 mb-4 shadow-sm border-0">
+        <div class="row">
+            <div class="col-md-3 text-center">
+                @if (!string.IsNullOrEmpty(author.PhotoPath))
+                {
+                    <img src="@author.PhotoPath" alt="@author.Name" 
+                         style="width: 150px; height: 150px; object-fit: cover; border-radius: 50%;" />
+                }
+                else
+                {
+                    <div style="width: 150px; height: 150px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                                border-radius: 50%; margin: 0 auto; display: flex; align-items: center; justify-content: center;">
+                        <span style="font-size: 4rem;">📷</span>
+                    </div>
+                }
+            </div>
+            <div class="col-md-9">
+                <h2>@author.Name</h2>
+                <p><strong>📝 Биография:</strong></p>
+                <p class="text-muted">@(author.Biography ?? "Биография отсутствует")</p>
+                <p><strong>📚 Всего книг:</strong> @books.Count</p>
+            </div>
+        </div>
+    </div>
+
+    <h4 class="mb-3">📚 Книги автора</h4>
+    <div class="row">
+        @foreach (var book in books)
+        {
+            <div class="col-md-6 col-lg-4 mb-3">
+                <div class="card h-100 shadow-sm border-0">
+                    <div class="card-body">
+                        <h5 class="card-title text-primary">📘 @book.Title</h5>
+                        <p class="card-text small">
+                            <span class="badge bg-secondary">@book.Category?.Name</span>
+                            <span class="badge bg-info">📅 @book.Year г.</span>
+                        </p>
+                        <p class="card-text">@(book.Description?.Length > 100 ? book.Description.Substring(0, 100) + "..." : book.Description)</p>
+                    </div>
+                    <div class="card-footer bg-transparent border-0 pb-3">
+                        @if (!string.IsNullOrEmpty(book.FilePath))
+                        {
+                            <a href="/books/read/@book.Id" class="btn btn-primary btn-sm me-2" target="_blank">📖 Читать</a>
+                            <a href="/books/download/@book.Id" class="btn btn-success btn-sm">⬇ Скачать</a>
+                        }
+                        else
+                        {
+                            <span class="text-muted">📭 Файл отсутствует</span>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+else
+{
+    <div class="alert alert-warning">
+        ⚠️ Автор не найден
+    </div>
+}
+
+<div class="mt-3">
+    <a href="/authors" class="btn btn-secondary">← Назад к списку авторов</a>
+</div>
+
+<style>
+    .card {
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 8px 20px rgba(0,0,0,0.1) !important;
+    }
+</style>
+
+@code {
+    [Parameter] public int Id { get; set; }
+    private Author? author;
+    private List<Book> books = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        author = await context.Authors
+            .Include(a => a.BookAuthors)
+            .ThenInclude(ba => ba.Book)
+            .ThenInclude(b => b.Category)
+            .FirstOrDefaultAsync(a => a.Id == Id);
+
+        if (author != null)
+        {
+            books = author.BookAuthors
+                .Select(ba => ba.Book)
+                .OrderBy(b => b.Title)
+                .ToList();
+        }
+    }
+}

@@ -1,7 +1,201 @@
 ﻿@page "/"
+@using LibraryWebApp.Models
+@using LibraryWebApp.Data
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<LibraryDbContext> DbFactory
+@inject NavigationManager Navigation
 
-<PageTitle>Home</PageTitle>
+<div class="hero-section text-center py-5 mb-5" style="background: linear-gradient(135deg, #1565C0 0%, #0D47A1 100%); border-radius: 20px; color: white;">
+    <div class="container">
+        <h1 class="display-4 fw-bold mb-3">📚 Добро пожаловать в библиотеку!</h1>
+        <p class="lead mb-4">Бесплатный доступ к книгам. Читайте онлайн, скачивайте, открывайте новых авторов.</p>
+        <a href="/books" class="btn btn-light btn-lg px-4 me-2">
+            📖 Каталог книг
+        </a>
+        <a href="/authors" class="btn btn-outline-light btn-lg px-4">
+            ✍️ Наши авторы
+        </a>
+    </div>
+</div>
 
-<h1>Hello, world!</h1>
+<div class="container">
+    <div class="row text-center mb-5">
+        <div class="col-md-4 mb-3">
+            <div class="card h-100 shadow-sm border-0">
+                <div class="card-body">
+                    <div class="display-1">📖</div>
+                    <h5 class="card-title">Очень много книг</h5>
+                    <p class="card-text">Художественная литература, наука, детские книги и многое другое</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 mb-3">
+            <div class="card h-100 shadow-sm border-0">
+                <div class="card-body">
+                    <div class="display-1">✨</div>
+                    <h5 class="card-title">Читайте онлайн</h5>
+                    <p class="card-text">Удобный просмотр книг прямо в браузере</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 mb-3">
+            <div class="card h-100 shadow-sm border-0">
+                <div class="card-body">
+                    <div class="display-1">🎯</div>
+                    <h5 class="card-title">Совершенно бесплатно</h5>
+                    <p class="card-text">Никаких скрытых платежей и подписок</p>
+                </div>
+            </div>
+        </div>
+    </div>
 
-Welcome to your new app.
+    <div class="row mt-4">
+        <div class="col-md-6 mb-4">
+            <div class="card h-100 shadow-sm border-0">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">📚 Последние добавленные книги</h5>
+                </div>
+                <div class="card-body">
+                    @if (recentBooks.Any())
+                    {
+                        <div class="list-group list-group-flush">
+                            @foreach (var book in recentBooks)
+                            {
+                                <div class="list-group-item border-0 d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <strong>📘 @book.Title</strong><br />
+                                        <small class="text-muted">
+                                            @if (book.BookAuthors != null && book.BookAuthors.Any())
+                                            {
+                                                @string.Join(", ", book.BookAuthors.Select(ba => ba.Author?.Name))
+                                            }
+                                            else
+                                            {
+                                                <span>Автор не указан</span>
+                                            }
+                                        </small>
+                                    </div>
+                                    <div>
+                                        @if (!string.IsNullOrEmpty(book.FilePath))
+                                        {
+                                            <a href="/books/read/@book.Id" class="btn btn-sm btn-primary me-1" target="_blank">📖 Читать</a>
+                                            <a href="/books/download/@book.Id" class="btn btn-sm btn-success">⬇ Скачать</a>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">📭 Нет файла</span>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-muted text-center py-3">📭 Пока нет книг. Загляните позже!</p>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 mb-4">
+            <div class="card h-100 shadow-sm border-0">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">✍️ Популярные авторы</h5>
+                </div>
+                <div class="card-body">
+                    @if (popularAuthors.Any())
+                    {
+                        <div class="list-group list-group-flush">
+                            @foreach (var author in popularAuthors)
+                            {
+                                <a href="/authors/@author.Id" class="list-group-item list-group-item-action border-0">
+                                    @if (!string.IsNullOrEmpty(author.PhotoPath))
+                                    {
+                                        <img src="@author.PhotoPath" style="width: 35px; height: 35px; border-radius: 50%; object-fit: cover; margin-right: 10px;" />
+                                    }
+                                    else
+                                    {
+                                        <span style="font-size: 1.3rem; margin-right: 10px;">📷</span>
+                                    }
+                                    @author.Name
+                                    <span class="badge bg-secondary float-end mt-2">@(author.BookAuthors?.Count() ?? 0) книг</span>
+                                </a>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-muted text-center py-3">📭 Пока нет авторов.</p>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="text-center mt-4 mb-5">
+        <a href="/books" class="btn btn-primary btn-lg px-5">
+            🚀 Смотреть все книги
+        </a>
+    </div>
+</div>
+
+<style>
+    .hero-section {
+        background-size: cover;
+        background-position: center;
+    }
+    .card {
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 20px rgba(0,0,0,0.12) !important;
+    }
+    .list-group-item {
+        transition: background-color 0.2s ease;
+    }
+    .list-group-item:hover {
+        background-color: #e3f2fd;
+    }
+    .btn {
+        border-radius: 25px;
+    }
+</style>
+
+@code {
+    private List<Book> recentBooks = new();
+    private List<Author> popularAuthors = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            
+            recentBooks = await context.Books
+                .Include(b => b.BookAuthors)
+                .ThenInclude(ba => ba.Author)
+                .OrderByDescending(b => b.Id)
+                .Take(6)
+                .ToListAsync();
+            
+            popularAuthors = await context.Authors
+                .Include(a => a.BookAuthors)
+                .ThenInclude(ba => ba.Book)
+                .OrderByDescending(a => a.BookAuthors.Count)
+                .Take(5)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Ошибка загрузки данных: {ex.Message}");
+        }
+        
+        StateHasChanged();
+    }
+}

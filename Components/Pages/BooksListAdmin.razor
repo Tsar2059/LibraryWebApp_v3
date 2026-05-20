@@ -1,0 +1,148 @@
+@page "/books-list-admin"
+@using LibraryWebApp.Services
+@using LibraryWebApp.Models
+@using LibraryWebApp.Data
+@using Microsoft.EntityFrameworkCore
+@inject AuthService AuthService
+@inject IDbContextFactory<LibraryDbContext> DbFactory
+@inject NavigationManager Navigation
+
+@if (!AuthService.IsAuthenticated)
+{
+    Navigation.NavigateTo("/login");
+}
+else
+{
+    <h3 class="text-primary mb-4">📋 Управление книгами</h3>
+
+    <div class="mb-3">
+        <a href="/books/add" class="btn btn-primary">➕ Добавить книгу</a>
+        <a href="/admin" class="btn btn-secondary ms-2">← Назад в админку</a>
+    </div>
+
+    <div class="mb-3">
+        <input type="text" @bind="searchTerm" @bind:event="oninput" class="form-control" 
+               placeholder="🔍 Поиск по названию, автору или ISBN..." />
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Название</th>
+                    <th>Автор</th>
+                    <th>Категория</th>
+                    <th>Год</th>
+                    <th>Доступно</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var book in filteredBooks)
+                {
+                    <tr style="@(book.AvailableCopies == 0 ? "background-color: #ffe6e6;" : "")">
+                        <td>@book.Id</td
+                        <td>@book.Title</td
+                        <td>
+                            @if (book.BookAuthors != null && book.BookAuthors.Any())
+                            {
+                                @string.Join(", ", book.BookAuthors.Select(ba => ba.Author?.Name))
+                            }
+                            else
+                            {
+                                <span class="text-muted">Нет автора</span>
+                            }
+                        </td
+                        <td>@book.Category?.Name</td
+                        <td>@book.Year</td
+                        <td class="@(book.AvailableCopies == 0 ? "text-danger fw-bold" : "")">
+                            @book.AvailableCopies / @book.TotalCopies
+                        </td
+                        <td>
+                            <a href="/books/edit/@book.Id" class="btn btn-sm btn-warning me-1">
+                                ✏️ Редактировать
+                            </a>
+                            <button type="button" class="btn btn-sm btn-danger" @onclick="() => DeleteBook(book.Id)">
+                                🗑 Удалить
+                            </button>
+                        </td
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @if (!filteredBooks.Any())
+    {
+        <div class="alert alert-info text-center">
+            📭 Книги не найдены.
+        </div>
+    }
+}
+
+<style>
+    .table tbody tr {
+        transition: background-color 0.2s ease;
+    }
+    .table tbody tr:hover {
+        background-color: #f5f5f5 !important;
+    }
+    .btn-sm {
+        border-radius: 20px;
+    }
+</style>
+
+@code {
+    private List<Book> books = new();
+    private string searchTerm = string.Empty;
+
+    private List<Book> filteredBooks => string.IsNullOrWhiteSpace(searchTerm)
+        ? books
+        : books.Where(b => 
+            b.Title.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
+            (b.BookAuthors.Any(ba => ba.Author.Name.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)))
+        ).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthService.IsAuthenticated)
+        {
+            await LoadBooks();
+        }
+        else
+        {
+            Navigation.NavigateTo("/login");
+        }
+    }
+
+    private async Task LoadBooks()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        books = await context.Books
+            .Include(b => b.BookAuthors)
+            .ThenInclude(ba => ba.Author)
+            .Include(b => b.Category)
+            .OrderByDescending(b => b.Id)
+            .ToListAsync();
+        StateHasChanged();
+    }
+
+    private async Task DeleteBook(int id)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var book = await context.Books.FindAsync(id);
+        if (book != null)
+        {
+            if (!string.IsNullOrEmpty(book.FilePath))
+            {
+                var filePath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "books", book.FilePath);
+                if (File.Exists(filePath))
+                    File.Delete(filePath);
+            }
+            context.Books.Remove(book);
+            await context.SaveChangesAsync();
+            await LoadBooks();
+        }
+    }
+}

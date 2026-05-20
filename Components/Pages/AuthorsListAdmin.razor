@@ -1,0 +1,166 @@
+@page "/authors-admin"
+@using LibraryWebApp.Services
+@using LibraryWebApp.Models
+@using LibraryWebApp.Data
+@using Microsoft.EntityFrameworkCore
+@inject AuthService AuthService
+@inject IDbContextFactory<LibraryDbContext> DbFactory
+@inject NavigationManager Navigation
+
+@if (!AuthService.IsAuthenticated)
+{
+    Navigation.NavigateTo("/login");
+}
+else
+{
+    <h3 class="text-primary mb-4">✍️ Управление авторами</h3>
+
+    @if (showSuccess)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            ✅ @successMessage
+            <button type="button" class="btn-close" @onclick="() => showSuccess = false"></button>
+        </div>
+    }
+
+    @if (showError)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            ❌ @errorMessage
+            <button type="button" class="btn-close" @onclick="() => showError = false"></button>
+        </div>
+    }
+
+    <div class="mb-3">
+        <a href="/authors/add" class="btn btn-primary">➕ Добавить автора</a>
+        <a href="/admin" class="btn btn-secondary ms-2">← Назад в админку</a>
+    </div>
+
+    <div class="mb-3">
+        <input type="text" @bind="searchTerm" @bind:event="oninput" class="form-control" 
+               placeholder="🔍 Поиск по имени автора..." />
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Фото</th>
+                    <th>Имя автора</th>
+                    <th>Количество книг</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var author in filteredAuthors)
+                {
+                    <tr>
+                        <td>@author.Id</td
+                        <td>
+                            @if (!string.IsNullOrEmpty(author.PhotoPath))
+                            {
+                                <img src="@author.PhotoPath" style="width: 40px; height: 40px; object-fit: cover; border-radius: 50%;" />
+                            }
+                            else
+                            {
+                                <span>📷</span>
+                            }
+                        </td
+                        <td>
+                            <!-- ССЫЛКА НА СТРАНИЦУ АВТОРА -->
+                            <a href="/authors/@author.Id" target="_blank">
+                                @author.Name
+                            </a>
+                        </td
+                        <td>@author.BookAuthors?.Count()</td
+                        <td>
+                            <button type="button" class="btn btn-sm btn-danger" @onclick="() => DeleteAuthor(author.Id)">
+                                🗑 Удалить
+                            </button>
+                        </td
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @if (!filteredAuthors.Any())
+    {
+        <div class="alert alert-info text-center">
+            📭 Авторы не найдены.
+        </div>
+    }
+}
+
+@code {
+    private List<Author> authors = new();
+    private string searchTerm = string.Empty;
+    private bool showSuccess = false;
+    private bool showError = false;
+    private string successMessage = "";
+    private string errorMessage = "";
+
+    private List<Author> filteredAuthors => string.IsNullOrWhiteSpace(searchTerm)
+        ? authors
+        : authors.Where(a => a.Name.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthService.IsAuthenticated)
+        {
+            await LoadAuthors();
+        }
+        else
+        {
+            Navigation.NavigateTo("/login");
+        }
+    }
+
+    private async Task LoadAuthors()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        authors = await context.Authors
+            .Include(a => a.BookAuthors)
+            .OrderBy(a => a.Name)
+            .ToListAsync();
+        StateHasChanged();
+    }
+
+    private async Task DeleteAuthor(int id)
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var author = await context.Authors
+            .Include(a => a.BookAuthors)
+            .FirstOrDefaultAsync(a => a.Id == id);
+
+        if (author != null)
+        {
+            if (author.BookAuthors != null && author.BookAuthors.Any())
+            {
+                errorMessage = $"❌ Нельзя удалить автора \"{author.Name}\", так как у него есть книги. Сначала удалите книги.";
+                showError = true;
+                await Task.Delay(3000);
+                showError = false;
+                return;
+            }
+
+            if (!string.IsNullOrEmpty(author.PhotoPath))
+            {
+                var filePath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "authors", Path.GetFileName(author.PhotoPath));
+                if (File.Exists(filePath))
+                    File.Delete(filePath);
+            }
+
+            context.Authors.Remove(author);
+            await context.SaveChangesAsync();
+            successMessage = $"✅ Автор \"{author.Name}\" удалён";
+            showSuccess = true;
+            await LoadAuthors();
+            StateHasChanged();
+
+            await Task.Delay(2000);
+            showSuccess = false;
+        }
+    }
+}

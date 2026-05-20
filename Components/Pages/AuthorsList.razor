@@ -1,0 +1,105 @@
+@page "/authors"
+@using LibraryWebApp.Models
+@using LibraryWebApp.Data
+@using Microsoft.EntityFrameworkCore
+@using System.Text.RegularExpressions
+@inject IDbContextFactory<LibraryDbContext> DbFactory
+
+<h3 class="text-primary mb-4">✍️ Наши авторы</h3>
+
+<div class="mb-3">
+    <input type="text" @bind="searchTerm" @bind:event="oninput" class="form-control" 
+           placeholder="🔍 Поиск по имени автора..." />
+</div>
+
+<div class="row">
+    @foreach (var author in filteredAuthors)
+    {
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100 shadow-sm border-0">
+                <div class="card-body text-center">
+                    @if (!string.IsNullOrEmpty(author.PhotoPath))
+                    {
+                        <img src="@author.PhotoPath" alt="@author.Name" 
+                             style="width: 100px; height: 100px; object-fit: cover; border-radius: 50%; margin-bottom: 15px;" />
+                    }
+                    else
+                    {
+                        <div style="width: 100px; height: 100px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                                    border-radius: 50%; margin: 0 auto 15px; display: flex; align-items: center; justify-content: center;">
+                            <span style="font-size: 3rem;">📷</span>
+                        </div>
+                    }
+                    
+                    <h5 class="card-title">
+                        <a href="/authors/@author.Id" class="text-decoration-none">@author.Name</a>
+                    </h5>
+                    
+                    <p class="card-text small text-muted">
+                        📚 Книг: @(author.BookAuthors?.Count() ?? 0)
+                    </p>
+                    
+                    <p class="card-text">
+                        @if (author.BookAuthors != null && author.BookAuthors.Any())
+                        {
+                            <span class="badge bg-primary">
+                                @string.Join(", ", author.BookAuthors.Take(3).Select(ba => ba.Book?.Title))
+                                @(author.BookAuthors.Count() > 3 ? "..." : "")
+                            </span>
+                        }
+                        else
+                        {
+                            <span class="text-muted">Пока нет книг</span>
+                        }
+                    </p>
+                    
+                    <a href="/authors/@author.Id" class="btn btn-outline-primary btn-sm mt-2">
+                        📖 Подробнее
+                    </a>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@if (!filteredAuthors.Any())
+{
+    <div class="alert alert-info text-center">
+        📭 Авторы не найдены. Попробуйте изменить поисковый запрос.
+    </div>
+}
+
+<style>
+    .card {
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 20px rgba(0,0,0,0.1) !important;
+    }
+    a {
+        transition: color 0.2s ease;
+    }
+    a:hover {
+        color: #2E7D32 !important;
+    }
+</style>
+
+@code {
+    private List<Author> authors = new();
+    private string searchTerm = string.Empty;
+
+    private List<Author> filteredAuthors => string.IsNullOrWhiteSpace(searchTerm)
+        ? authors
+        : authors.Where(a => a.Name.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        authors = await context.Authors
+            .Include(a => a.BookAuthors)
+            .ThenInclude(ba => ba.Book)
+            .OrderBy(a => a.Name)
+            .ToListAsync();
+    }
+}

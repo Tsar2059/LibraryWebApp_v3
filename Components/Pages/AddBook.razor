@@ -1,0 +1,310 @@
+@page "/books/add"
+@using LibraryWebApp.Services
+@using LibraryWebApp.Models
+@using LibraryWebApp.Data
+@using Microsoft.EntityFrameworkCore
+@using System.Text.RegularExpressions
+@inject IBookService BookService
+@inject AuthService AuthService
+@inject NavigationManager Navigation
+@inject IDbContextFactory<LibraryDbContext> DbFactory
+@inject IWebHostEnvironment WebHostEnvironment
+
+@if (!AuthService.IsAuthenticated)
+{
+    Navigation.NavigateTo("/login");
+}
+else
+{
+    <h3 class="text-primary mb-4">Добавление новой книги</h3>
+
+    @if (showSuccess)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            ✅ @successMessage
+            <button type="button" class="btn-close" @onclick="() => showSuccess = false"></button>
+        </div>
+    }
+
+    @if (showError)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            ❌ @errorMessage
+            <button type="button" class="btn-close" @onclick="() => showError = false"></button>
+        </div>
+    }
+
+    <EditForm Model="newBook" OnValidSubmit="HandleSubmit">
+        <DataAnnotationsValidator />
+        <ValidationSummary class="text-danger mb-3" />
+
+        <div class="card p-4 mb-3 shadow-sm">
+            <div class="mb-3">
+                <label class="form-label fw-bold">Название книги</label>
+                <InputText @bind-Value="newBook.Title" class="form-control" />
+                <ValidationMessage For="@(() => newBook.Title)" class="text-danger" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label fw-bold">Год издания</label>
+                <InputNumber @bind-Value="newBook.Year" class="form-control" />
+                <ValidationMessage For="@(() => newBook.Year)" class="text-danger" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label fw-bold">Количество экземпляров</label>
+                <InputNumber @bind-Value="newBook.TotalCopies" class="form-control" />
+                <ValidationMessage For="@(() => newBook.TotalCopies)" class="text-danger" />
+            </div>
+
+            <!-- ВЫБОР АВТОРОВ С ЧЕКБОКСАМИ -->
+            <div class="mb-3">
+                <label class="form-label fw-bold">Авторы (выберите одного или нескольких)</label>
+                <div class="border rounded p-2" style="max-height: 200px; overflow-y: auto;">
+                    @foreach (var author in authors)
+                    {
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" 
+                                   value="@author.Id" 
+                                   @bind="checkedStates[author.Id]" 
+                                   id="author_@author.Id" />
+                            <label class="form-check-label" for="author_@author.Id">
+                                @author.Name
+                            </label>
+                        </div>
+                    }
+                </div>
+                <a href="/authors/add" class="btn btn-link btn-sm d-block mt-1">+ Добавить нового автора</a>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label fw-bold">Категория</label>
+                <select @bind="newBook.CategoryId" class="form-select">
+                    <option value="0">-- Выберите категорию --</option>
+                    @foreach (var category in categories)
+                    {
+                        <option value="@category.Id">@category.Name</option>
+                    }
+                </select>
+                <div class="mt-2">
+                    <input type="text" @bind="newCategoryName" class="form-control" placeholder="Или введите новую категорию" />
+                    <button type="button" class="btn btn-sm btn-outline-primary mt-1" @onclick="AddNewCategory">+ Добавить новую категорию</button>
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label fw-bold">Файл книги (PDF, EPUB, FB2)</label>
+                <InputFile OnChange="OnFileSelected" class="form-control" />
+                @if (!string.IsNullOrEmpty(fileError))
+                {
+                    <div class="text-danger mt-1">@fileError</div>
+                }
+                @if (selectedFileName != null)
+                {
+                    <div class="text-success mt-1">Выбран файл: @selectedFileName</div>
+                }
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label fw-bold">Описание</label>
+                <InputTextArea @bind-Value="newBook.Description" class="form-control" rows="4" />
+                <ValidationMessage For="@(() => newBook.Description)" class="text-danger" />
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary px-4">Сохранить</button>
+        <a href="/books-list-admin" class="btn btn-secondary ms-2">Отмена</a>
+    </EditForm>
+}
+
+@code {
+    private Book newBook = new();
+    private List<Author> authors = new();
+    private List<Category> categories = new();
+    private List<int> selectedAuthorIds = new();
+    private Dictionary<int, bool> checkedStates = new();
+    private string newCategoryName = string.Empty;
+    private IBrowserFile? selectedFile;
+    private string? selectedFileName;
+    private string? fileError;
+    private bool showSuccess = false;
+    private bool showError = false;
+    private string successMessage = "";
+    private string errorMessage = "";
+
+    private static readonly Regex SqlInjectionPattern = new(
+        @"\b(SELECT|INSERT|UPDATE|DELETE|DROP|UNION|ALTER|CREATE|TRUNCATE|EXEC|EXECUTE|MERGE|REPLACE|DECLARE|CURSOR|FETCH|INTO|WHERE|FROM|ADD|MODIFY|RENAME|BACKUP|RESTORE|xp_|sp_)\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    private bool HasSqlInjection(string? input)
+    {
+        if (string.IsNullOrWhiteSpace(input)) return false;
+        return SqlInjectionPattern.IsMatch(input);
+    }
+
+    private void UpdateSelectedAuthors()
+    {
+        selectedAuthorIds.Clear();
+        foreach (var author in authors)
+        {
+            if (checkedStates.ContainsKey(author.Id) && checkedStates[author.Id])
+            {
+                selectedAuthorIds.Add(author.Id);
+            }
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!AuthService.IsAuthenticated)
+        {
+            Navigation.NavigateTo("/login");
+        }
+        else
+        {
+            await LoadData();
+            foreach (var author in authors)
+            {
+                checkedStates[author.Id] = false;
+            }
+        }
+    }
+
+    private async Task LoadData()
+    {
+        authors = (await BookService.GetAllAuthorsAsync()).ToList();
+        await using var context = await DbFactory.CreateDbContextAsync();
+        categories = await context.Categories.ToListAsync();
+    }
+
+    private async Task AddNewCategory()
+    {
+        if (string.IsNullOrWhiteSpace(newCategoryName)) return;
+
+        if (HasSqlInjection(newCategoryName))
+        {
+            errorMessage = "❌ Название категории содержит запрещённые SQL-команды";
+            showError = true;
+            return;
+        }
+
+        await using var context = await DbFactory.CreateDbContextAsync();
+        var newCategory = new Category { Name = newCategoryName };
+        context.Categories.Add(newCategory);
+        await context.SaveChangesAsync();
+        
+        newCategoryName = string.Empty;
+        await LoadData();
+        
+        successMessage = "✅ Новая категория добавлена";
+        showSuccess = true;
+    }
+
+    private void OnFileSelected(InputFileChangeEventArgs e)
+    {
+        selectedFile = e.File;
+        selectedFileName = selectedFile?.Name;
+        fileError = null;
+
+        if (selectedFile != null)
+        {
+            var allowedExtensions = new[] { ".pdf", ".epub", ".fb2" };
+            var extension = Path.GetExtension(selectedFile.Name).ToLower();
+            if (!allowedExtensions.Contains(extension))
+            {
+                fileError = "Разрешены только файлы форматов PDF, EPUB, FB2";
+                selectedFile = null;
+                selectedFileName = null;
+            }
+            else if (selectedFile.Size > 50 * 1024 * 1024)
+            {
+                fileError = "Размер файла не должен превышать 50 МБ";
+                selectedFile = null;
+                selectedFileName = null;
+            }
+        }
+    }
+
+    private async Task HandleSubmit()
+    {
+        try
+        {
+            UpdateSelectedAuthors();
+
+            if (newBook.CategoryId == 0)
+            {
+                errorMessage = "❌ Пожалуйста, выберите категорию!";
+                showError = true;
+                return;
+            }
+
+            if (selectedAuthorIds == null || !selectedAuthorIds.Any())
+            {
+                errorMessage = "❌ Пожалуйста, выберите хотя бы одного автора!";
+                showError = true;
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(newBook.Title))
+            {
+                errorMessage = "❌ Пожалуйста, введите название книги!";
+                showError = true;
+                return;
+            }
+
+            if (HasSqlInjection(newBook.Title))
+            {
+                errorMessage = "❌ Название содержит запрещённые SQL-команды";
+                showError = true;
+                return;
+            }
+
+            if (HasSqlInjection(newBook.Description))
+            {
+                errorMessage = "❌ Описание содержит запрещённые SQL-команды";
+                showError = true;
+                return;
+            }
+
+            if (selectedFile != null)
+            {
+                using var memoryStream = new MemoryStream();
+                await selectedFile.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024).CopyToAsync(memoryStream);
+                memoryStream.Position = 0;
+                
+                var formFile = new FormFile(memoryStream, 0, memoryStream.Length, selectedFile.Name, selectedFile.Name)
+                {
+                    Headers = new HeaderDictionary(),
+                    ContentType = selectedFile.ContentType
+                };
+                
+                await BookService.AddBookAsync(newBook, selectedAuthorIds, formFile);
+            }
+            else
+            {
+                await BookService.AddBookAsync(newBook, selectedAuthorIds, null);
+            }
+            
+            successMessage = "✅ Книга успешно добавлена!";
+            showSuccess = true;
+            
+            newBook = new Book();
+            selectedAuthorIds = new List<int>();
+            selectedFile = null;
+            selectedFileName = null;
+            
+            foreach (var author in authors)
+            {
+                checkedStates[author.Id] = false;
+            }
+            
+            await LoadData();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"❌ Ошибка: {ex.Message}";
+            showError = true;
+        }
+    }
+}

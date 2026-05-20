@@ -1,0 +1,170 @@
+@page "/books/edit/{id:int}"
+@using LibraryWebApp.Services
+@using LibraryWebApp.Models
+@using LibraryWebApp.Data
+@using Microsoft.EntityFrameworkCore
+@inject AuthService AuthService
+@inject IDbContextFactory<LibraryDbContext> DbFactory
+@inject NavigationManager Navigation
+
+@if (!AuthService.IsAuthenticated)
+{
+    Navigation.NavigateTo("/login");
+}
+else
+{
+    <h3 class="text-primary mb-4">✏️ Редактирование книги</h3>
+
+    @if (showSuccess)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            ✅ @successMessage
+            <button type="button" class="btn-close" @onclick="() => showSuccess = false"></button>
+        </div>
+    }
+
+    @if (showError)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            ❌ @errorMessage
+            <button type="button" class="btn-close" @onclick="() => showError = false"></button>
+        </div>
+    }
+
+    @if (book != null)
+    {
+        <div class="card p-4 mb-3 shadow-sm">
+            <div class="mb-3">
+                <label class="form-label fw-bold">Название книги</label>
+                <input type="text" @bind="book.Title" class="form-control" disabled />
+                <small class="text-muted">Название нельзя изменить</small>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label fw-bold text-primary">📚 Общее количество экземпляров</label>
+                    <input type="number" @bind="book.TotalCopies" class="form-control" min="0" />
+                    <small class="text-muted">Общее число книг в фонде</small>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label fw-bold text-success">✅ Доступно для выдачи</label>
+                    <input type="number" @bind="book.AvailableCopies" class="form-control" min="0" @bind:event="oninput" />
+                    <small class="text-muted">Книги, которые сейчас можно взять</small>
+                </div>
+            </div>
+
+            <div class="alert alert-info">
+                💡 <strong>Подсказка:</strong> Доступных книг не может быть больше, чем общее количество.
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label fw-bold">📊 Текущая статистика</label>
+                <div class="progress" style="height: 30px;">
+                    <div class="progress-bar bg-success" role="progressbar" 
+                         style="width: @(book.TotalCopies > 0 ? (book.AvailableCopies * 100 / book.TotalCopies) : 0)%">
+                        @(book.TotalCopies > 0 ? (book.AvailableCopies * 100 / book.TotalCopies) : 0)% доступно
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-3">
+            <button type="button" class="btn btn-primary px-4" @onclick="SaveChanges" @disabled="isSaving">
+                @if (isSaving)
+                {
+                    <span>⏳ Сохранение...</span>
+                }
+                else
+                {
+                    <span>💾 Сохранить изменения</span>
+                }
+            </button>
+            <a href="/books-list-admin" class="btn btn-secondary ms-2">← Назад к списку</a>
+        </div>
+    }
+    else
+    {
+        <div class="alert alert-warning">
+            ⚠️ Книга не найдена
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+    private Book? book;
+    private bool isSaving = false;
+    private bool showSuccess = false;
+    private bool showError = false;
+    private string successMessage = "";
+    private string errorMessage = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthService.IsAuthenticated)
+        {
+            await LoadBook();
+        }
+        else
+        {
+            Navigation.NavigateTo("/login");
+        }
+    }
+
+    private async Task LoadBook()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        book = await context.Books
+            .Include(b => b.BookAuthors)
+            .ThenInclude(ba => ba.Author)
+            .FirstOrDefaultAsync(b => b.Id == Id);
+    }
+
+    private async Task SaveChanges()
+    {
+        if (book == null) return;
+
+        isSaving = true;
+        showSuccess = false;
+        showError = false;
+        StateHasChanged();
+
+        if (book.AvailableCopies > book.TotalCopies)
+        {
+            errorMessage = "❌ Количество доступных книг не может превышать общее количество!";
+            showError = true;
+            isSaving = false;
+            StateHasChanged();
+            return;
+        }
+
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            var bookToUpdate = await context.Books.FindAsync(Id);
+            
+            if (bookToUpdate != null)
+            {
+                bookToUpdate.TotalCopies = book.TotalCopies;
+                bookToUpdate.AvailableCopies = book.AvailableCopies;
+                await context.SaveChangesAsync();
+                
+                successMessage = $"✅ Количество экземпляров книги \"{book.Title}\" успешно обновлено!";
+                showSuccess = true;
+                
+                book.TotalCopies = bookToUpdate.TotalCopies;
+                book.AvailableCopies = bookToUpdate.AvailableCopies;
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"❌ Ошибка при сохранении: {ex.Message}";
+            showError = true;
+        }
+        finally
+        {
+            isSaving = false;
+            StateHasChanged();
+        }
+    }
+}

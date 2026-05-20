@@ -1,0 +1,120 @@
+@page "/admin/home"
+@using LibraryWebApp.Services
+@using LibraryWebApp.Models
+@using LibraryWebApp.Data
+@using Microsoft.EntityFrameworkCore
+@inject AuthService AuthService
+@inject IDbContextFactory<LibraryDbContext> DbFactory
+@inject NavigationManager Navigation
+
+@if (!AuthService.IsAuthenticated)
+{
+    Navigation.NavigateTo("/login");
+}
+else
+{
+    <div class="container">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h3 class="text-primary">👑 Админ-панель</h3>
+            <button class="btn btn-outline-danger" @onclick="Logout">🚪 Выйти</button>
+        </div>
+
+        <div class="row">
+            <div class="col-md-4 mb-3">
+                <div class="card text-center shadow-sm">
+                    <div class="card-body">
+                        <div class="display-4">📚</div>
+                        <h5 class="card-title">Книги</h5>
+                        <p class="card-text display-6">@totalBooks</p>
+                        <a href="/books-list-admin" class="btn btn-primary btn-sm">Управление</a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="card text-center shadow-sm">
+                    <div class="card-body">
+                        <div class="display-4">✍️</div>
+                        <h5 class="card-title">Авторы</h5>
+                        <p class="card-text display-6">@totalAuthors</p>
+                        <a href="/authors" class="btn btn-primary btn-sm">Управление</a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="card text-center shadow-sm">
+                    <div class="card-body">
+                        <div class="display-4">🏷️</div>
+                        <h5 class="card-title">Категории</h5>
+                        <p class="card-text display-6">@totalCategories</p>
+                        <a href="/categories" class="btn btn-primary btn-sm">Управление</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-md-6">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">➕ Быстрые действия</h5>
+                    </div>
+                    <div class="card-body">
+                        <a href="/books/add" class="btn btn-outline-primary w-100 mb-2">➕ Добавить книгу</a>
+                        <a href="/authors/add" class="btn btn-outline-primary w-100 mb-2">👤 Добавить автора</a>
+                        <a href="/books-list-admin" class="btn btn-outline-secondary w-100">📋 Редактировать книги</a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0">📊 Статистика</h5>
+                    </div>
+                    <div class="card-body">
+                        <p><strong>📖 Всего книг:</strong> @totalBooks</p>
+                        <p><strong>✍️ Всего авторов:</strong> @totalAuthors</p>
+                        <p><strong>🏷️ Всего категорий:</strong> @totalCategories</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        .card {
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.1) !important;
+        }
+        .display-6 {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #2E7D32;
+        }
+    </style>
+}
+
+@code {
+    private int totalBooks = 0;
+    private int totalAuthors = 0;
+    private int totalCategories = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthService.IsAuthenticated)
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            totalBooks = await context.Books.CountAsync();
+            totalAuthors = await context.Authors.CountAsync();
+            totalCategories = await context.Categories.CountAsync();
+        }
+    }
+
+    private void Logout()
+    {
+        AuthService.Logout();
+        Navigation.NavigateTo("/", true);
+    }
+}

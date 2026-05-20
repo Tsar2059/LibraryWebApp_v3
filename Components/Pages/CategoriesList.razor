@@ -1,0 +1,262 @@
+@page "/categories"
+@using LibraryWebApp.Models
+@using LibraryWebApp.Data
+@using Microsoft.EntityFrameworkCore
+@using System.Text.RegularExpressions
+@inject IDbContextFactory<LibraryDbContext> DbFactory
+@inject NavigationManager Navigation
+
+<h3 class="text-primary mb-4">📂 Управление категориями</h3>
+
+@if (showSuccess)
+{
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        ✅ @successMessage
+        <button type="button" class="btn-close" @onclick="() => showSuccess = false"></button>
+    </div>
+}
+
+@if (showError)
+{
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        ❌ @errorMessage
+        <button type="button" class="btn-close" @onclick="() => showError = false"></button>
+    </div>
+}
+
+<div class="card p-3 mb-4">
+    <h5>➕ Добавить новую категорию</h5>
+    <div class="row">
+        <div class="col-md-6">
+            <input type="text" @bind="newCategoryName" class="form-control" placeholder="Название категории" />
+        </div>
+        <div class="col-md-3">
+            <button type="button" class="btn btn-primary" @onclick="AddCategory" disabled="@isAdding">
+                @if (isAdding)
+                {
+                    <span>⏳ Добавление...</span>
+                }
+                else
+                {
+                    <span>➕ Добавить</span>
+                }
+            </button>
+        </div>
+    </div>
+    <small class="text-muted mt-2">Только буквы, пробелы, дефисы. Не более 50 символов. Запрещены SQL-команды.</small>
+</div>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Название категории</th>
+            <th>Количество книг</th>
+            <th>Действия</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var category in categories)
+        {
+            <tr style="@(category.Id == newCategoryId ? "background-color: #e8f5e9;" : "")">
+                <td>@category.Name</td
+                <td>@category.Books?.Count()</td
+                <td>
+                    <button type="button" class="btn btn-sm btn-danger" @onclick="() => DeleteCategory(category.Id)" disabled="@isDeleting">
+                        🗑 Удалить
+                    </button>
+                </td
+            </tr>
+        }
+    </tbody>
+</table>
+
+<a href="/admin" class="btn btn-secondary">← Назад в админку</a>
+
+<style>
+    tr {
+        transition: background-color 0.3s ease;
+    }
+</style>
+
+@code {
+    private List<Category> categories = new();
+    private string newCategoryName = "";
+    private bool isAdding = false;
+    private bool isDeleting = false;
+    private bool showSuccess = false;
+    private bool showError = false;
+    private string successMessage = "";
+    private string errorMessage = "";
+    private int newCategoryId = 0;
+
+    // Регулярное выражение для обнаружения SQL-инъекций
+    private static readonly Regex SqlInjectionPattern = new(
+        @"(\b(SELECT|INSERT|UPDATE|DELETE|DROP|UNION|ALTER|CREATE|TRUNCATE|EXEC|EXECUTE|MERGE|REPLACE|DECLARE|CURSOR|FETCH|INTO|WHERE|FROM|ADD|MODIFY|RENAME|BACKUP|RESTORE)\b|--|;|'|\|\||\/\*|\*\/|@@|@\w+|xp_|sp_|\bOR\b|\bAND\b|\bNOT\b|\bLIKE\b)",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    // Опасные символы
+    private static readonly Regex DangerousCharsPattern = new(
+        @"[\%&$#@!*+=\[\]\{\}\\\|`~^]",
+        RegexOptions.Compiled);
+
+    private bool IsValidCategoryName(string? input)
+    {
+        if (string.IsNullOrWhiteSpace(input)) return false;
+        
+        // Проверка длины
+        if (input.Length > 50) return false;
+        
+        // Проверка на SQL-инъекции
+        if (SqlInjectionPattern.IsMatch(input))
+            return false;
+        
+        // Проверка на опасные символы
+        if (DangerousCharsPattern.IsMatch(input))
+            return false;
+        
+        // Проверка на допустимые символы (буквы, пробелы, дефисы, цифры)
+        var allowedPattern = new Regex(@"^[a-zA-Zа-яА-ЯёЁ0-9\s\-]+$");
+        return allowedPattern.IsMatch(input);
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCategories();
+    }
+
+    private async Task LoadCategories()
+    {
+        await using var context = await DbFactory.CreateDbContextAsync();
+        categories = await context.Categories.Include(c => c.Books).ToListAsync();
+    }
+
+    private async Task AddCategory()
+    {
+        // Скрываем старые уведомления
+        showSuccess = false;
+        showError = false;
+        
+        // Проверка на пустое имя
+        if (string.IsNullOrWhiteSpace(newCategoryName))
+        {
+            errorMessage = "Название категории не может быть пустым";
+            showError = true;
+            await Task.Delay(2000);
+            showError = false;
+            return;
+        }
+        
+        // Валидация имени
+        if (!IsValidCategoryName(newCategoryName))
+        {
+            errorMessage = "Название категории содержит запрещённые символы или SQL-команды. Разрешены только буквы, пробелы и дефисы.";
+            showError = true;
+            await Task.Delay(3000);
+            showError = false;
+            return;
+        }
+        
+        isAdding = true;
+        StateHasChanged();
+        
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            
+            // Проверка на дубликат
+            var existing = await context.Categories
+                .FirstOrDefaultAsync(c => c.Name.ToLower() == newCategoryName.ToLower());
+            
+            if (existing != null)
+            {
+                errorMessage = $"Категория \"{newCategoryName}\" уже существует";
+                showError = true;
+                isAdding = false;
+                StateHasChanged();
+                await Task.Delay(2000);
+                showError = false;
+                return;
+            }
+            
+            var newCategory = new Category { Name = newCategoryName.Trim() };
+            context.Categories.Add(newCategory);
+            await context.SaveChangesAsync();
+            
+            newCategoryId = newCategory.Id;
+            successMessage = $"Категория \"{newCategoryName}\" успешно добавлена";
+            showSuccess = true;
+            newCategoryName = "";
+            
+            await LoadCategories();
+            StateHasChanged();
+            
+            await Task.Delay(2000);
+            showSuccess = false;
+            newCategoryId = 0;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Ошибка: {ex.Message}";
+            showError = true;
+            await Task.Delay(3000);
+            showError = false;
+        }
+        finally
+        {
+            isAdding = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DeleteCategory(int id)
+    {
+        isDeleting = true;
+        StateHasChanged();
+        
+        try
+        {
+            await using var context = await DbFactory.CreateDbContextAsync();
+            var category = await context.Categories
+                .Include(c => c.Books)
+                .FirstOrDefaultAsync(c => c.Id == id);
+            
+            if (category != null)
+            {
+                // Проверка, есть ли книги в этой категории
+                if (category.Books != null && category.Books.Any())
+                {
+                    errorMessage = $"Нельзя удалить категорию \"{category.Name}\", так как в ней есть книги. Сначала удалите книги.";
+                    showError = true;
+                    isDeleting = false;
+                    StateHasChanged();
+                    await Task.Delay(3000);
+                    showError = false;
+                    return;
+                }
+                
+                context.Categories.Remove(category);
+                await context.SaveChangesAsync();
+                
+                successMessage = $"Категория \"{category.Name}\" удалена";
+                showSuccess = true;
+                await LoadCategories();
+                StateHasChanged();
+                
+                await Task.Delay(2000);
+                showSuccess = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Ошибка при удалении: {ex.Message}";
+            showError = true;
+            await Task.Delay(3000);
+            showError = false;
+        }
+        finally
+        {
+            isDeleting = false;
+            StateHasChanged();
+        }
+    }
+}
